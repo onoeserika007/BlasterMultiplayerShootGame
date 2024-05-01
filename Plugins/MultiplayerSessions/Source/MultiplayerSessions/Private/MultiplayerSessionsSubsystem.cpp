@@ -29,7 +29,8 @@ void UMultiplayerSessionsSubsystem::CreateSession(int32 NumPublicConnections, FS
 		bCreateSessionOnDestroy = true;
 		LastNumPublicConnections = NumPublicConnections;
 		LastMatchType = MatchType;
-		SessionInterface->DestroySession(NAME_GameSession);
+		//SessionInterface->DestroySession(NAME_GameSession);
+		DestroySession();
 		//return;
 	}
 
