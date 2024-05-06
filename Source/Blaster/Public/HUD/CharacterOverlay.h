@@ -8,6 +8,8 @@
 
 class UProgressBar;
 class UTextBlock;
+class UImage;
+class UWidgetAnimation;
 /**
  * 
  */
@@ -16,18 +18,48 @@ class BLASTER_API UCharacterOverlay : public UUserWidget
 {
 	GENERATED_BODY()
 public:
+	/*
+	*	Health
+	*/
 	UPROPERTY(meta = (Bindwidget))
 	TObjectPtr<UProgressBar> HealthBar;
+
 	UPROPERTY(meta = (Bindwidget))
 	TObjectPtr<UTextBlock> HealthText;
+
+	/*
+	*	Shield
+	*/
+	UPROPERTY(meta = (Bindwidget))
+	TObjectPtr<UProgressBar> ShieldBar;
+
+	UPROPERTY(meta = (Bindwidget))
+	TObjectPtr<UTextBlock> ShieldText;
+
+	/**
+	*	High Ping
+	*/
+	UPROPERTY(meta = (Bindwidget))
+	TObjectPtr<UImage> HighPingImage;
+
+	UPROPERTY(meta = (BindwidgetAnim), Transient) // Transient means this is not serialized to disk.
+	TObjectPtr<UWidgetAnimation> HighPingAnimation;
+
 	UPROPERTY(meta = (Bindwidget))
 	TObjectPtr<UTextBlock> ScoreAmount;
+
 	UPROPERTY(meta = (Bindwidget))
 	TObjectPtr<UTextBlock> DefeatsAmount;
+
 	UPROPERTY(meta = (Bindwidget))
 	TObjectPtr<UTextBlock> WeaponAmmoAmount;
+
 	UPROPERTY(meta = (Bindwidget))
 	TObjectPtr<UTextBlock> CarriedAmmoAmount;
+
 	UPROPERTY(meta = (Bindwidget))
 	TObjectPtr<UTextBlock> MatchCountdownText;
+
+	UPROPERTY(meta = (Bindwidget))
+	TObjectPtr<UTextBlock> GrenadesText;
 };

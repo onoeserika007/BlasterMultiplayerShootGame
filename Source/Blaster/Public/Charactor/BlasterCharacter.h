@@ -21,6 +21,7 @@ class UAnimMontage;
 class ABlasterPlayerController;
 class USoundCue;
 class ABlasterPlayerState;
+class UBuffComponent;
 
 UCLASS()
 class BLASTER_API ABlasterCharacter : public ACharacter, public IInteractWithCrosshairsInterface
@@ -36,6 +37,7 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	/** Allow actors to initialize themselves on the C++ side after all of their components have been initialized, only called during gameplay */
 	virtual void PostInitializeComponents() override;
 
 	virtual void OnRep_ReplicatedMovement() override;
@@ -48,20 +50,31 @@ public:
 
 	void PlayReloadMontage();
 
+	void PlayThrowGrenadeMontage();
+
 	void Elim();
+	void DropOrDestroyWeapon(AWeapon* Weapon);
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastElim();
 
 	UFUNCTION()
 	void ReceiveDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
 
+	void UpdateHUDHealth();
+
+	void UpdateHUDShield();
+
+	void UpdateHUDAmmo();
+
+	void SpawnDefaultWeapon();
+
 	virtual void Destroyed() override;
 
 protected:
 	virtual void BeginPlay() override;
-	void UpdateHUDHealth();
 	// Poll for any relevant classes and initialize our HUD
 	void PollInit();
+	void RotateInPlace(float DeltaTime);
 private:
 	// inputs
 	UPROPERTY(EditDefaultsOnly, Category = "EnhancedInput")
@@ -79,6 +92,9 @@ private:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "EnhancedInput|Action", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> IA_Equip;
 
+	//UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "EnhancedInput|Action", meta = (AllowPrivateAccess = "true"))
+	//TObjectPtr<UInputAction> IA_SwapWeapons;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "EnhancedInput|Action", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> IA_Crouch;
 	bool bIsPersitentCrouching = false;
@@ -91,6 +107,9 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "EnhancedInput|Action", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> IA_Reload;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "EnhancedInput|Action", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> IA_Grenade;
 public:	
 	UFUNCTION()
 	void Move(const FInputActionInstance& Instance);
@@ -102,6 +121,9 @@ public:
 
 	UFUNCTION()
 	void Equip();
+
+	//UFUNCTION()
+	//void TrySwapWeapons();
 
 	UFUNCTION()
 	void CrouchCompleted();
@@ -116,6 +138,9 @@ public:
 	void AimTriggered();
 
 	UFUNCTION()
+	void AimCanceled();
+
+	UFUNCTION()
 	void Fire();
 
 	UFUNCTION()
@@ -127,6 +152,12 @@ public:
 
 	UFUNCTION()
 	void Reload();
+
+	UPROPERTY(Replicated)
+	bool bDisableGameplay;
+
+	UFUNCTION()
+	void ThrowGrenade();
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;
@@ -145,6 +176,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCombatComponent> Combat;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UBuffComponent> Buff;
 
 	UFUNCTION(Server, Reliable)
 	void ServerEuipped();
@@ -173,6 +207,9 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Combat")
 	TObjectPtr<UAnimMontage> ReloadMontage;
 
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	TObjectPtr<UAnimMontage> ThrowGrenadeMontage;
+
 	void HideCharacterIfCameraClose();
 	UPROPERTY(EditAnywhere)
 	float CameraThreshold = 200.0f;
@@ -195,7 +232,20 @@ private:
 	float Health = 100.0f;
 
 	UFUNCTION()
-	void OnRep_Health();
+	void OnRep_Health(float LastHealth);
+
+	/**
+	*	Player Shield 
+	*/
+
+	UPROPERTY(EditAnywhere, Category = "Player Stats")
+	float MaxShield = 125.0f;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Shield, VisibleAnywhere, Category = "Player Stats")
+	float Shield = 50.0f;
+
+	UFUNCTION()
+	void OnRep_Shield(float LastShield);
 
 	TObjectPtr<ABlasterPlayerController> BlasterPC;
 
@@ -244,6 +294,19 @@ private:
 	TObjectPtr<USoundCue> ElimBotSound;
 
 	TObjectPtr<ABlasterPlayerState> BlasterPlayerState;
+
+	/* 
+	*	Grenade
+	*/
+
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<UStaticMeshComponent> AttachedGrenade;
+
+	/*
+	*	DefaultWeaponClass
+	*/
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<AWeapon> DefaultWeaponClass;
 public:
 	void SetOverlappingWeapon(AWeapon* Weapon);
 	bool IsWeaponEquipped();
@@ -257,10 +320,22 @@ public:
 	FORCEINLINE bool ShouldRotateRootBone() const { return bRotateRootBone; }
 	FORCEINLINE bool IsElimmed() const { return bElimmed; }
 	FORCEINLINE float GetHealth() const { return Health; }
+	FORCEINLINE void SetHealth(float Amount) { Health = Amount; }
 	FORCEINLINE float GetMaxHealth() const { return MaxHealth; }
+	FORCEINLINE float GetShield() const { return Shield; }
+	FORCEINLINE void SetShield(float Amount) { Shield = Amount; }
+	FORCEINLINE float GetMaxShield() const { return MaxShield; }
 	ECombatState GetCombateState() const;
+	FORCEINLINE UCombatComponent* GetCombatComponent() const { return Combat; }
+	FORCEINLINE UBuffComponent* GetBuffComponent() const { return Buff; }
+	FORCEINLINE bool IsDisableGameplay() const { return bDisableGameplay; }
 
 	// hit reaction
-	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastHit();
+	//UFUNCTION(NetMulticast, Unreliable)
+	//void MulticastHit();
+
+	UFUNCTION(BlueprintImplementableEvent)
+	void ShowSniperScopeWidget(bool bShowScope);
+	FORCEINLINE UAnimMontage* GetReloadMontage() const { return ReloadMontage; }
+	FORCEINLINE UStaticMeshComponent* GetAttachedGrenade() const { return AttachedGrenade; }
 };

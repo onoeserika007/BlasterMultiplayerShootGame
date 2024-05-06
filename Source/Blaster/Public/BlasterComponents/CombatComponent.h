@@ -13,6 +13,7 @@ class AWeapon;
 class ABlasterCharacter;
 class ABlasterPlayerController;
 class ABlasterHUD;
+class AProjectile;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class BLASTER_API UCombatComponent : public UActorComponent
@@ -32,14 +33,46 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void EquipWeapon(AWeapon* Weapon);
+	void EquipPrimaryWeapon(AWeapon* Weapon);
+	void EquipSecondaryWeapon(AWeapon* Weapon);
+	void SwapWeapons();
+
+	void PlayEquippWeaponSound(AWeapon* Weapon);
+
+	void UpdateCarriedAmmo();
+
+	void AttachActorToRightHand(AActor* ActorToAttach);
+	void AttachActorToLeftHand(AActor* ActorToAttach);
+	void AttachWeaponToLeftHand(AWeapon* Weapon);
+	void AttachActorToBackpack(AActor* ActorToAttach);
+
+	void FireButtonPressed(bool bPressed);
 
 	void Reload();
+	void ReloadEmptyWeapon();
 	// on all machines
 	void HandleReload();
 	int32 AmountToReload();
 
 	UFUNCTION(BlueprintCallable)
 	void FinishReloading();
+
+	UFUNCTION(BlueprintCallable)
+	void ShotgunShellReload();
+	void JumpToShotgunEnd();
+
+	UFUNCTION(BlueprintCallable)
+	void ThrowGrenadeFinished();
+
+	UFUNCTION(BlueprintCallable)
+	void LaunchGrenade();
+	void ShowAttachedGrenade(bool bShowGrenade);
+
+	UFUNCTION(Server, Reliable)
+	void ServerLaunchGrenade(const FVector_NetQuantize& Target);
+
+	void PickupAmmo(EWeaponType WeaponType, int32 AmmoAmount);
+
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
@@ -49,6 +82,9 @@ protected:
 	UFUNCTION()
 	void OnRep_EquippedWeapon();
 
+	UFUNCTION()
+	void OnRep_SecondaryWeapon();
+
 	// replicate_notify from server to client can only have parameter that is the last one before rep.
 	// howerver, RPC from client to server can have parameters.
 	UFUNCTION(Server, Reliable)
@@ -56,8 +92,6 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetHitTarget(FVector Target);
-
-	void FireButtonPressed(bool bPressed);
 
 	void Fire();
 
@@ -73,12 +107,22 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerReload();
+
+	void ThrowGrenade();
+
+	UFUNCTION(Server, Reliable)
+	void ServerThrowGrenade();
+
+	void HandleThrowGrenade();
 private:
 	TObjectPtr<ABlasterCharacter> Character;
 	TObjectPtr<ABlasterPlayerController> PlayerController;
 	TObjectPtr<ABlasterHUD> HUD;
 	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeapon)
 	TObjectPtr<AWeapon> EquippedWeapon;
+
+	UPROPERTY(ReplicatedUsing = OnRep_SecondaryWeapon)
+	TObjectPtr<AWeapon> SecondaryWeapon;
 
 	UPROPERTY(Replicated)
 	bool bIsAming;
@@ -143,10 +187,45 @@ private:
 	UFUNCTION()
 	void OnRep_CarriedAmmo();
 
+	UPROPERTY(EditAnywhere)
+	int32 MaxCarriedAmmo = 300;
+
 	TMap<EWeaponType, int32> CarriedAmmoMap;
 
 	UPROPERTY(EditAnywhere)
-	int32 StartingARAmmo = 90;
+	int32 StartingARAmmo = 120;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingRocketAmmo = 5;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingPistolAmmo = 36;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingSMGAmmo = 160;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingShotgunAmmo = 36;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingSniperAmmo = 36;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingGrenadeAmmo = 36;
+
+	UPROPERTY(EditAnywhere, ReplicatedUsing = OnRep_Grenades)
+	int32 Grenades = 5;
+
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<AProjectile> GrenadeClass;
+
+	UFUNCTION()
+	void OnRep_Grenades();
+
+	UPROPERTY(EditAnywhere)
+	int32 MaxCarriedGrenades = 5;
+
+	void UpdateHUDGrenades();
 
 	void InitializeCarriedAmmo();
 
@@ -157,7 +236,11 @@ private:
 	void OnRep_CombatState();
 public:	
 
-		
 	void UpdateAmmoValues();
 
+	void UpdateShotgunAmmoValues();
+
+	FORCEINLINE int32 GetGrenades() const { return Grenades; }
+
+	bool ShouldSwapWeapons();
 };

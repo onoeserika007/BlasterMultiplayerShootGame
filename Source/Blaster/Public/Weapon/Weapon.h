@@ -8,6 +8,7 @@
 #include "Weapon.generated.h"
 
 class USkeletalMeshComponent;
+class USceneComponent;
 class USphereComponent;
 class UWidgetComponent;
 class UAnimationAsset;
@@ -21,6 +22,7 @@ UENUM(BlueprintType)
 enum class EWeaponState : uint8 {
 	EWS_Initial UMETA(DisplayName = "Initial State"),
 	EWS_Equipped UMETA(DisplayName = "Equipped"),
+	EWS_EquippedSecondary UMETA(DisplayName = "Secondary"),
 	EWS_Dropped UMETA(DisplayName = "Dropped"),
 
 	EWS_MAX UMETA(DisplayName = "DefaultMAX")
@@ -40,6 +42,11 @@ public:
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	virtual void OnWeaponStateSet();
+	void OnEquipped();
+	void OnEquippedSecondary();
+	void OnDropped();
+
 	UFUNCTION()
 	virtual void OnSphereOverlap(
 		UPrimitiveComponent* OverlapComponent,
@@ -83,6 +90,7 @@ public:
 	FORCEINLINE float GetZoomInterpSpeed() const { return ZoomInterpSpeed; }
 	void Dropped();
 	bool IsEmpty();
+	bool IsFull();
 	FORCEINLINE EWeaponType GetWeaponType() const { return WeaponType; }
 	FORCEINLINE int32 GetAmmo() const { return Ammo; }
 	FORCEINLINE int32 GetMagCapacity() const { return MagCapacity; }
@@ -127,6 +135,13 @@ public:
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<USoundCue> EquipSound;
 
+	/*
+	* Enable or disbale custom depth
+	*/
+	void EnableCustomDepth(bool bEnable);
+
+	bool bDestroyWeapon = false;
+
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Weapon Properties")
 	TObjectPtr<USkeletalMeshComponent> WeaponMesh;
@@ -145,6 +160,8 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
 	TSubclassOf<ACasing> CasingClass;
+
+	FTransform RelativeTransformFromRootToMesh;
 
 	// count of Ammo remaining
 	UPROPERTY(EditAnywhere, ReplicatedUsing = OnRep_Ammo)

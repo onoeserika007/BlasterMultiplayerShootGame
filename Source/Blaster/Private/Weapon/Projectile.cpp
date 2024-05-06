@@ -10,6 +10,8 @@
 #include "Sound/SoundCue.h"
 #include "Blaster/Public/Charactor/BlasterCharacter.h"
 #include "Blaster/Blaster.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraComponent.h"
 
 // Sets default values
 AProjectile::AProjectile()
@@ -25,13 +27,15 @@ AProjectile::AProjectile()
 	CollisionBox->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
 	CollisionBox->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECR_Block);
 	CollisionBox->SetCollisionResponseToChannel(ECollisionChannel::ECC_WorldStatic, ECR_Block);
-	CollisionBox->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECR_Ignore);
+	CollisionBox->SetCollisionResponseToChannel(ECollisionChannel::ECC_WorldDynamic, ECR_Block);
+	CollisionBox->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECR_Block);
 	CollisionBox->SetCollisionResponseToChannel(ECC_SkeletalMesh, ECR_Block);
 
 	//CollisionBox->SetNotifyRigidBodyCollision(true);
 
-	ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComponent"));
-	ProjectileMovementComponent->bRotationFollowsVelocity = true;
+	// Projectile as a base class will not be instantialized.
+	/*ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComponent"));
+	ProjectileMovementComponent->bRotationFollowsVelocity = true;*/
 }
 
 // Called when the game starts or when spawned
@@ -64,25 +68,17 @@ void AProjectile::Tick(float DeltaTime)
 
 void AProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	// use replicated notify  instead
+	// use replicated notify instead
 	// but how can you know whether you are healing or bleeding when health got replicated?
-	ABlasterCharacter* HitActor = Cast<ABlasterCharacter>(OtherActor);
-	if (HitActor) {
-		HitActor->MulticastHit();
-	}
+	//ABlasterCharacter* HitActor = Cast<ABlasterCharacter>(OtherActor); // deprecated
+	//if (HitActor) {
+	//	HitActor->MulticastHit();
+	//}
 	Destroy();
 }
 
 void AProjectile::Destroyed()
 {
-	//if (GEngine) {
-	//	GEngine->AddOnScreenDebugMessage(
-	//		-1,
-	//		3,
-	//		FColor::Cyan,
-	//		FString("Projectile Destroyed.")
-	//	);
-	//}
 	if (ImpactParticle) {
 		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ImpactParticle, GetActorLocation());
 	}
@@ -93,3 +89,56 @@ void AProjectile::Destroyed()
 	Super::Destroyed();
 }
 
+void AProjectile::SpawnTrailSystem()
+{
+	if (TrailSystem) {
+		TrailSystemComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
+			TrailSystem,
+			GetRootComponent(),
+			FName(),
+			GetActorLocation(),
+			GetActorRotation(),
+			EAttachLocation::KeepWorldPosition,
+			false	// auto destroy
+		);
+	}
+}
+
+void AProjectile::StartDestroyTimer()
+{
+	GetWorldTimerManager().SetTimer(
+		DestroyTimer,
+		this,
+		&ThisClass::DestroyTimerFinished,
+		DestroyTime
+	);
+}
+
+void AProjectile::DestroyTimerFinished()
+{
+	Destroy();
+}
+
+void AProjectile::ExplodeDamage()
+{
+	APawn* FiringPawn = GetInstigator();
+	// hit collision enabled on client for rokect, but damage left for server only.
+	if (FiringPawn && HasAuthority()) {
+		AController* FiringController = FiringPawn->GetController();
+		if (FiringController) {
+			UGameplayStatics::ApplyRadialDamageWithFalloff(
+				this,	// World Context obj
+				Damage,
+				MinimumDamage,
+				GetActorLocation(),
+				DamageInnerRadius,
+				DamageOuterRadius,
+				1.0f,	// DamageFalloff
+				UDamageType::StaticClass(),
+				TArray<AActor*>(), // IgnoreActors
+				this,	// DamageCauser
+				FiringController // Instigator Controller
+			);
+		}
+	}
+}

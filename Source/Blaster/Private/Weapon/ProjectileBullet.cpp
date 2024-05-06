@@ -4,13 +4,21 @@
 #include "Weapon/ProjectileBullet.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/ProjectileMovementComponent.h"
+
+AProjectileBullet::AProjectileBullet()
+{
+	ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComponent"));
+	ProjectileMovementComponent->bRotationFollowsVelocity = true;
+	// why
+	ProjectileMovementComponent->SetIsReplicated(true);
+}
 
 void AProjectileBullet::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
 	if (OwnerCharacter) {
-		AController* OwnerController = OwnerCharacter->Controller;
-		if (OwnerController) {
+		if (AController* OwnerController = OwnerCharacter->Controller) {
 			UGameplayStatics::ApplyDamage(OtherActor, Damage, OwnerController, this, UDamageType::StaticClass());
 		}
 	}

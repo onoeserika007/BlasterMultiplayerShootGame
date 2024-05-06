@@ -7,6 +7,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerStart.h"
 #include "Blaster/Public/PlayerState/BlasterPlayerState.h"
+#include "Blaster/Public/GameState/BlasterGameState.h"
 
 namespace MatchState {
 	const FName Cooldown = FName("Cooldown");
@@ -21,14 +22,14 @@ void ABlasterGameMode::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (GEngine) {
-		GEngine->AddOnScreenDebugMessage(
-			4,
-			15,
-			FColor::Yellow,
-			FString::Printf(TEXT("Countdown in GameMode: %f"), CountdownTime)
-		);
-	}
+	//if (GEngine) {
+	//	GEngine->AddOnScreenDebugMessage(
+	//		4,
+	//		15,
+	//		FColor::Yellow,
+	//		FString::Printf(TEXT("Countdown in GameMode: %f"), CountdownTime)
+	//	);
+	//}
 
 	if (MatchState == MatchState::WaitingToStart) {
 		CountdownTime = WarmupTime - (GetWorld()->GetTimeSeconds() - LevelStartingTime);
@@ -44,6 +45,9 @@ void ABlasterGameMode::Tick(float DeltaTime)
 	}
 	else {
 		CountdownTime = CooldownTime + WarmupTime + MatchTime - (GetWorld()->GetTimeSeconds() - LevelStartingTime);
+		if (CountdownTime <= 0.0f) {
+			RestartGame();
+		}
 	}
 }
 
@@ -51,14 +55,14 @@ void ABlasterGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 	LevelStartingTime = GetWorld()->GetTimeSeconds();
-	if (GEngine) {
-		GEngine->AddOnScreenDebugMessage(
-			-1,
-			60,
-			FColor::Yellow,
-			FString::Printf(TEXT("LevelStartingTime in GameMode set : %f at %f"), LevelStartingTime, GetWorld()->GetTimeSeconds())
-		);
-	}
+	//if (GEngine) {
+	//	GEngine->AddOnScreenDebugMessage(
+	//		-1,
+	//		60,
+	//		FColor::Yellow,
+	//		FString::Printf(TEXT("LevelStartingTime in GameMode set : %f at %f"), LevelStartingTime, GetWorld()->GetTimeSeconds())
+	//	);
+	//}
 }
 
 void ABlasterGameMode::OnMatchStateSet()
@@ -78,8 +82,21 @@ void ABlasterGameMode::PlayerElimilated(ABlasterCharacter* ElimmedCharacter, ABl
 	ABlasterPlayerState* AttackerPlayerState = AttackerController ? Cast<ABlasterPlayerState>(AttackerController->PlayerState) : nullptr;
 	ABlasterPlayerState* VictimPlayerState = VictimController ? Cast<ABlasterPlayerState>(VictimController->PlayerState) : nullptr;
 
+	ABlasterGameState* BlasterGameState = GetGameState<ABlasterGameState>();
+
 	if (AttackerPlayerState && AttackerPlayerState != VictimPlayerState) {
 		AttackerPlayerState->AddToScore(1.0f);
+		if (BlasterGameState) {
+			BlasterGameState->UpdateTopScore(AttackerPlayerState);
+			if (GEngine) {
+				GEngine->AddOnScreenDebugMessage(
+					-1,
+					15,
+					FColor::Yellow,
+					FString("Score Updated.")
+				);
+			}
+		}
 	}
 
 	if (VictimPlayerState) {

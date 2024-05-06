@@ -54,9 +54,9 @@ void ACasing::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrim
 	if (ShellSound) {
 		UGameplayStatics::PlaySoundAtLocation(this, ShellSound, GetActorLocation());
 	}
-	//Destroy();
+	Destroy();
 	// seconds
-	SetLifeSpan(3);
+	//SetLifeSpan(0.3);
 }
 
 // Called every frame
