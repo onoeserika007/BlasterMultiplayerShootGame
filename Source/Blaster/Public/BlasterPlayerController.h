@@ -6,9 +6,17 @@
 #include "GameFramework/PlayerController.h"
 #include "BlasterPlayerController.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FHighPingDelegate, bool, bPingTooHigh);
+
 class ABlasterHUD;
 class UCharacterOverlay;
 class ABlasterGameMode;
+class UInputAction;
+class UInputMappingContext;
+class UUserWidget;
+class UReturnToMainMenu;
+class ABlasterPlayerState;
+class ABlasterGameState;
 /**
  * 
  */
@@ -29,21 +37,31 @@ public:
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void GetLifetimeReplicatedProps(TArray< FLifetimeProperty >& OutLifetimeProps) const override;
+	void HideTeamScores();
+	void InitTeamScores();
+	void SetHUDRedTeamScore(int32 RedScore);
+	void SetHUDBlueTeamScore(int32 BlueScore);
 	void PollInit();
 	void CheckTimeSync(float DeltaTime);
 
 	virtual float GetServerTime(); // sync server with world clock
 	// Called after this PlayerController's viewport/net connection is associated with this player controller.
 	virtual void ReceivedPlayer() override; // sync with the server as soon as possible
-	void OnMatchStateSet(FName State);
-	void HandleMatchHasStarted();
-	void HandleCooldown();
+	void OnMatchStateSet(FName State, bool bTeamsMatch = false);
+	void HandleMatchHasStarted(bool bTeamsMatch = false);
+	void HandleCooldown(bool bTeamsMatch = false);
 
 	void HighPingWarning();
 	void StopHighPingWarning();
 	void CheckPing(float DeltaTime);
+
+	float SingleTripTime = 0.0f;
+	FHighPingDelegate HighPingDelegate;
+
+	void BroadcastElim(APlayerState* Attacker, APlayerState* Victim);
 protected:
 	virtual void BeginPlay() override;
+	virtual void SetupInputComponent() override;
 	void SetHUDTime();
 
 	/**
@@ -69,7 +87,40 @@ protected:
 
 	UFUNCTION(Client, Reliable)
 	void ClientJoinMidgame(FName StateOfMatch, float Warmup, float Match, float StartingTime, float Cooldown);
+
+	UFUNCTION(Client, Reliable)
+	void ClientElimAnnouncement(APlayerState* Attacker, APlayerState* Victim);
+
+	UPROPERTY(ReplicatedUsing = OnRep_ShowTeamScores)
+	bool bShowTeamScores = false;
+
+	UFUNCTION()
+	void OnRep_ShowTeamScores();
+
+	FString GetInfoText(const TArray<ABlasterPlayerState*>& Players);
+	FString GetTeamsInfoText(ABlasterGameState* BlasterGameState);
 private:
+	/** 
+	*	Input
+	*/
+	UPROPERTY(EditDefaultsOnly, Category = "EnhancedInput")
+	TObjectPtr<UInputMappingContext> InputMappingContext;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "EnhancedInput|Action", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> IA_Menu;
+
+	/** 
+	*	Return To main menu
+	*/
+
+	UFUNCTION()
+	void ToggleViewReturnToMainMenu();
+
+	UPROPERTY(EditAnywhere, Category = "HUD")
+	TSubclassOf<UUserWidget> ReturnToMainMenuWidget;
+	TObjectPtr<UReturnToMainMenu> ReturnToMainMenu;
+	bool bReturnToMainMenuOpen = false;
+
 	TObjectPtr<ABlasterHUD> BlasterHUD;
 	TObjectPtr<ABlasterGameMode> BlasterGameMode;
 	// should not hard code
@@ -114,6 +165,9 @@ private:
 	UPROPERTY(EditAnywhere)
 	float CheckPingFrequency = 20.0f;
 
+	UFUNCTION(Server, Reliable)
+	void ServerReportPingStatus(bool bHighPing);
+
 	UPROPERTY(EditAnywhere)
-	float HighPingThreshold = 50.0f;
+	float HighPingThreshold = 420.0f;
 };

@@ -33,17 +33,19 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void EquipWeapon(AWeapon* Weapon);
+	void DropTheFlag();
 	void EquipPrimaryWeapon(AWeapon* Weapon);
 	void EquipSecondaryWeapon(AWeapon* Weapon);
 	void SwapWeapons();
 
-	void PlayEquippWeaponSound(AWeapon* Weapon);
+	void PlayEquipWeaponSound(AWeapon* Weapon);
 
 	void UpdateCarriedAmmo();
 
 	void AttachActorToRightHand(AActor* ActorToAttach);
 	void AttachActorToLeftHand(AActor* ActorToAttach);
 	void AttachWeaponToLeftHand(AWeapon* Weapon);
+	//void AttachFlagToLeftHand(AActor* ActorToAttach);
 	void AttachActorToBackpack(AActor* ActorToAttach);
 
 	void FireButtonPressed(bool bPressed);
@@ -68,10 +70,20 @@ public:
 	void LaunchGrenade();
 	void ShowAttachedGrenade(bool bShowGrenade);
 
+	UFUNCTION(BlueprintCallable)
+	void FinishSwapWeapon();
+
+	UFUNCTION(BlueprintCallable)
+	void FinishSwapAttachWeapon();
+
 	UFUNCTION(Server, Reliable)
 	void ServerLaunchGrenade(const FVector_NetQuantize& Target);
 
 	void PickupAmmo(EWeaponType WeaponType, int32 AmmoAmount);
+
+	bool bLocallyReloading = false;
+
+	bool bLocallySwapping = false;
 
 protected:
 	// Called when the game starts
@@ -80,10 +92,16 @@ protected:
 	void SetAiming(bool bIsAiming);
 
 	UFUNCTION()
+	void OnRep_Aiming();
+
+	UFUNCTION()
 	void OnRep_EquippedWeapon();
 
 	UFUNCTION()
 	void OnRep_SecondaryWeapon();
+
+	UFUNCTION()
+	void OnRep_Flag();
 
 	// replicate_notify from server to client can only have parameter that is the last one before rep.
 	// howerver, RPC from client to server can have parameters.
@@ -94,12 +112,24 @@ protected:
 	void ServerSetHitTarget(FVector Target);
 
 	void Fire();
+	void FireProjectileWeapon();
+	void FireHitScanWeapon();
+	void FireShotgun();
 
-	UFUNCTION(Server, Reliable)
-	void ServerFire(const FVector_NetQuantize& TraceHitTarget);
+	void LocalFire(const FVector_NetQuantize& TraceHitTarget);
+	void LocalShotgunFire(const TArray<FVector_NetQuantize>& TraceHitTargets);
+
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerFire(const FVector_NetQuantize& TraceHitTarget, float FireDelay);
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastFire(const FVector_NetQuantize& TraceHitTarget);
+
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerShotgunFire(const TArray<FVector_NetQuantize>& TraceHitTargets, float FireDelay);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastShotgunFire(const TArray<FVector_NetQuantize>& TraceHitTargets);
 
 	void TraceUnderCrosshairs(FHitResult& TraceHitResult);
 
@@ -124,8 +154,13 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_SecondaryWeapon)
 	TObjectPtr<AWeapon> SecondaryWeapon;
 
-	UPROPERTY(Replicated)
-	bool bIsAming;
+	UPROPERTY(ReplicatedUsing = OnRep_Flag)
+	TObjectPtr<AWeapon> Flag;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Aiming)
+	bool bIsAimng;
+
+	bool bAimingButtonPressed;
 
 	UPROPERTY(EditAnywhere)
 	float BaseWalkSpeed;
@@ -136,8 +171,13 @@ private:
 	bool bFireButtonPressed;
 
 	// HitTarget
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_HitTarget)
 	FVector HitTarget;
+
+	FVector LocalHitTarget;
+
+	UFUNCTION()
+	void OnRep_HitTarget();
 
 	FHUDPackage HUDPackage;
 
@@ -232,8 +272,17 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_CombatState)
 	ECombatState CombatState = ECombatState::ECS_Unoccupied;
 
+	void SetCombatState(ECombatState State);
+	void OnCombatStateSet();
+
 	UFUNCTION()
 	void OnRep_CombatState();
+
+	UPROPERTY(ReplicatedUsing = OnRep_HoldingTheFlag)
+	bool bHoldingTheFlag = false;
+
+	UFUNCTION()
+	void OnRep_HoldingTheFlag();
 public:	
 
 	void UpdateAmmoValues();

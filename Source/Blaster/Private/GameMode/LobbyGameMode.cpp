@@ -4,6 +4,7 @@
 #include "GameMode/LobbyGameMode.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h" 
+#include "MultiplayerSessionsSubsystem.h"
 
 void ALobbyGameMode::PostLogin(APlayerController* NewPlayer)
 {
@@ -32,14 +33,31 @@ void ALobbyGameMode::PostLogin(APlayerController* NewPlayer)
 			}
 		}
 
-		if (NumberOfPlayers == 2) {
-			UWorld* World = GetWorld();
-			if (World) {
-				bUseSeamlessTravel = true;
-				//World->ServerTravel(FString("/Game/Maps/BlasterMap?listen"));
-				World->ServerTravel(FString("/Game/Maps/TestMap?listen"));
+		UGameInstance* GameInstance = GetGameInstance();
+		if (GameInstance) {
+			UMultiplayerSessionsSubsystem* MTSubsystem = GameInstance->GetSubsystem<UMultiplayerSessionsSubsystem>();
+			check(MTSubsystem);
+			if (NumberOfPlayers == 2) {
+				UWorld* World = GetWorld();
+				if (World) {
+					bUseSeamlessTravel = true;
+
+					FString MatchType = MTSubsystem->DesiredMatchType;
+					if (MatchType == "FreeForAll") {
+						World->ServerTravel(FString("/Game/Maps/BlasterMap?listen"));
+					}
+					else if (MatchType == "Teams") {
+						World->ServerTravel(FString("/Game/Maps/TeamsMap?listen"));
+					}
+					else if (MatchType == "CaptureTheFlag") {
+						World->ServerTravel(FString("/Game/Maps/CTFMap?listen"));
+					}
+					else {
+						World->ServerTravel(FString("/Game/Maps/TestMap?listen"));
+					}
+				}
 			}
-		}
+		}	// GameInstance
 	}
 }
 

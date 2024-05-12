@@ -10,6 +10,7 @@ class UTexture2D;
 class UCharacterOverlay;
 class UUserWidget;
 class UAnnouncement;
+class UElimAnnouncement;
 
 USTRUCT(BlueprintType)
 struct FHUDPackage {
@@ -38,19 +39,36 @@ private:
 
 	UPROPERTY(EditAnywhere)
 	float CrosshairSpreadMax = 16.f;
+
+	UPROPERTY(EditAnywhere, Category = "Player Stats")
+	TSubclassOf<UUserWidget> CharacterOverlayClass;
+
+	TObjectPtr<APlayerController> OwningPlayer;
+
+	UPROPERTY(EditAnywhere, Category = "Announcements")
+	TSubclassOf<UElimAnnouncement> ElimAnnouncementClass;
+
+	UPROPERTY(EditAnywhere, Category = "Announcements")
+	TSubclassOf<UUserWidget> AnnouncementClass;
+
+	UPROPERTY(EditAnywhere, Category = "Announcements")
+	float ElimAnnouncementTime = 5.f;
+
+	UFUNCTION()
+	void ElimAnnouncementTimerFinished(UElimAnnouncement* MsgToRemove);
+
+	TArray<UElimAnnouncement*> ElimMessages;
 protected:
 	virtual void BeginPlay() override;
 public:
-	UPROPERTY(EditAnywhere, Category = "Player Stats")
-	TSubclassOf<UUserWidget> CharacterOverlayClass;
 	TObjectPtr<UCharacterOverlay> CharacterOverlay;
 
-	UPROPERTY(EditAnywhere, Category = "UAnnouncements")
-	TSubclassOf<UUserWidget> AnnouncementClass;
 	TObjectPtr<UAnnouncement> Announcement;
+
 public:
 	virtual void DrawHUD() override;
 	FORCEINLINE void SetHUDPackage(const FHUDPackage& Package) { HUDPackage = Package; }
 	void AddCharacterOverlay();
 	void AddAnnouncement();
+	void AddElimAnnouncement(FString Attacker, FString Victim);
 };

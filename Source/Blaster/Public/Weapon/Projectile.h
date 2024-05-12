@@ -14,6 +14,7 @@ class USoundCue;
 class UStaticMeshComponent;
 class UNiagaraSystem;
 class UNiagaraComponent;
+class AWeapon;
 
 UCLASS()
 class BLASTER_API AProjectile : public AActor
@@ -23,15 +24,19 @@ class BLASTER_API AProjectile : public AActor
 	
 public:	
 	AProjectile();
-
-protected:
 	virtual void Tick(float DeltaTime) override;
-	virtual void BeginPlay() override;
-	UFUNCTION()
-	virtual void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 	// exploit the destory func to broadcast
 	/** Called when this actor is explicitly being destroyed during gameplay or in the editor, not called during level streaming or gameplay ending */
 	virtual void Destroyed() override;
+
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& Event) override;
+#endif
+
+protected:
+	virtual void BeginPlay() override;
+	UFUNCTION()
+	virtual void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UBoxComponent> CollisionBox;
@@ -47,9 +52,6 @@ protected:
 
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<USoundCue> ImpactSound;
-
-	UPROPERTY(EditAnywhere)
-	float Damage = 20.0f;
 
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UNiagaraSystem> TrailSystem;
@@ -75,15 +77,44 @@ protected:
 	float MinimumDamage = 10.0f;
 	void ExplodeDamage();
 
+	//UFUNCTION(NetMulticast, Reliable)
+	// reliable? maybe but unecessary, we will spawn on client rather than use replicates from server most time.
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastOnDestroyed();
+
+	void HandleDestroyed();
+
 // members
 private:
-
-
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UParticleSystem> Tracer;
 
 	//UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UParticleSystemComponent> TracerComponent;
 public:	
+	/** 
+	*	Used with server-side rewind
+	*/
 
+	UPROPERTY(EditAnywhere)
+	bool bUseServerSideRewind = false;
+
+	FVector_NetQuantize TraceStart;
+	// 2 decimal place of precision, more accureate than FVector_NetQuantize
+	FVector_NetQuantize100 InitialVelocity;
+
+	UPROPERTY(EditAnywhere)
+	float InitialSpeed = 15000;
+
+	// Only Set this for Grenades and Rockets
+	UPROPERTY(EditAnywhere)
+	float Damage = 20.0f;
+
+	// Doesn't matter for Grenades and Rockets
+	UPROPERTY(EditAnywhere)
+	float HeadShotDamage = 40.0f;
+
+	TObjectPtr<AWeapon> ShotWeapon = nullptr;
+
+	FORCEINLINE bool IsReplicated() const { return bReplicates; }
 };

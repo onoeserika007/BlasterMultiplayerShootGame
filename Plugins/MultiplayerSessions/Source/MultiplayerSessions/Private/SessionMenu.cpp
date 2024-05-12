@@ -60,6 +60,21 @@ bool USessionMenu::Initialize()
 	return true;
 }
 
+void USessionMenu::MenuTearDown()
+{
+	RemoveFromParent();
+
+	UWorld* World = GetWorld();
+	if (World) {
+		APlayerController* PlayerController = World->GetFirstPlayerController();
+		if (PlayerController) {
+			FInputModeGameOnly InputModeData;
+			PlayerController->SetInputMode(InputModeData);
+			PlayerController->SetShowMouseCursor(false);
+		}
+	}
+}
+
 void USessionMenu::NativeDestruct()
 {
 	MenuTearDown();
@@ -198,20 +213,5 @@ void USessionMenu::JoinButtonClicked()
 	JoinButton->SetIsEnabled(false);
 	if (MultiplayerSessionsSubsystem) {
 		MultiplayerSessionsSubsystem->FindSessions(10000);
-	}
-}
-
-void USessionMenu::MenuTearDown()
-{
-	RemoveFromParent();
-
-	UWorld* World = GetWorld();
-	if (World) {
-		APlayerController* PlayerController = World->GetFirstPlayerController();
-		if (PlayerController) {
-			FInputModeGameOnly InputModeData;
-			PlayerController->SetInputMode(InputModeData);
-			PlayerController->SetShowMouseCursor(false);
-		}
 	}
 }

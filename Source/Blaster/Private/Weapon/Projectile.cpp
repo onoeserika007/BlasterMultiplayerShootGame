@@ -54,9 +54,16 @@ void AProjectile::BeginPlay()
 		);
 	}
 
-	if (HasAuthority()) {
+	// bReplicates set after BeginPlay, so this won't work, just enable all collision callback on all machine
+	if (bReplicates) {
+		if (HasAuthority()) {
+			CollisionBox->OnComponentHit.AddDynamic(this, &ThisClass::OnHit);
+		}
+	}
+	else {
 		CollisionBox->OnComponentHit.AddDynamic(this, &ThisClass::OnHit);
 	}
+	//CollisionBox->OnComponentHit.AddDynamic(this, &ThisClass::OnHit);
 }
 
 // Called every frame
@@ -66,26 +73,34 @@ void AProjectile::Tick(float DeltaTime)
 
 }
 
+#if WITH_EDITOR
+void AProjectile::PostEditChangeProperty(FPropertyChangedEvent& Event)
+{
+	Super::PostEditChangeProperty(Event);
+
+	FName PropertyName = Event.Property != nullptr ? Event.Property->GetFName() : NAME_None;
+	if (PropertyName == GET_MEMBER_NAME_CHECKED(AProjectile, InitialSpeed)) {
+		if (ProjectileMovementComponent) {
+			ProjectileMovementComponent->InitialSpeed = InitialSpeed;
+			ProjectileMovementComponent->MaxSpeed = InitialSpeed;
+		}
+	}
+}
+#endif
+
 void AProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	// use replicated notify instead
-	// but how can you know whether you are healing or bleeding when health got replicated?
-	//ABlasterCharacter* HitActor = Cast<ABlasterCharacter>(OtherActor); // deprecated
-	//if (HitActor) {
-	//	HitActor->MulticastHit();
-	//}
+	// since the bullet hit and got destoryed to soon, a bullet can't even be replicated to client becofre it was destroyed.
+	// So we use multicast instead of Destroyed broadcast.
+	if (bReplicates && HasAuthority()) {
+		MulticastOnDestroyed();
+	}
 	Destroy();
 }
 
 void AProjectile::Destroyed()
 {
-	if (ImpactParticle) {
-		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ImpactParticle, GetActorLocation());
-	}
-
-	if (ImpactSound) {
-		UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, GetActorLocation());
-	}
+	if (!bReplicates) HandleDestroyed();
 	Super::Destroyed();
 }
 
@@ -140,5 +155,22 @@ void AProjectile::ExplodeDamage()
 				FiringController // Instigator Controller
 			);
 		}
+	}
+}
+
+void AProjectile::MulticastOnDestroyed_Implementation()
+{
+	HandleDestroyed();
+}
+
+void AProjectile::HandleDestroyed()
+{
+	UE_LOG(LogTemp, Warning, TEXT("Projectile Destroyed."));
+	if (ImpactParticle) {
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ImpactParticle, GetActorLocation());
+	}
+
+	if (ImpactSound) {
+		UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, GetActorLocation());
 	}
 }

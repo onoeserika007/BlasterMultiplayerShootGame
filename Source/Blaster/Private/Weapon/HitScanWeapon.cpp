@@ -10,6 +10,8 @@
 #include "DrawDebugHelpers.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Blaster/Public/BlasterTypes/WeaponTypes.h"
+#include "Blaster/Public/BlasterComponents/LagCompensationComponent.h"
+#include "Blaster/Public/BlasterPlayerController.h"
 
 void AHitScanWeapon::Fire(const FVector& HitTarget)
 {
@@ -27,23 +29,41 @@ void AHitScanWeapon::Fire(const FVector& HitTarget)
 		FTransform SocketTransform = MuzzleFlashSocket->GetSocketTransform(GetWeaponMesh());
 		// From muzzle flash socket to hit location from TraceUnderCrosshairs
 		FVector Start = SocketTransform.GetLocation();
-		FVector End = Start + (HitTarget - Start) * 1.25;
 		FHitResult FireHit;
 		WeaponTraceHit(Start, HitTarget, FireHit);
 		UWorld* World = GetWorld();
 		if (World) {
 			if (FireHit.bBlockingHit) {
+				// Only when hit character, the hit is valid to perform SSR
 				ABlasterCharacter* OtherActor = Cast<ABlasterCharacter>(FireHit.GetActor());
 
 				// Apply Damage
-				if (HasAuthority()) {
-					if (OtherActor && InstigatorController) {
-						UGameplayStatics::ApplyDamage(
+				// equals to
+				bool bCauseAuthDamage = HasAuthority() && (!bUseServerSideRewind || InstigatorPawn->IsLocallyControlled());
+				if (bCauseAuthDamage) {
+					// When instigator is on the server, we don't really need SSR anyway.
+					// when ssr is disabled, damage application is allowed only on server.
+					const float Magnification = FireHit.BoneName.ToString() == FString("head") ? HeadShotMagnification : 1.0f;
+					UGameplayStatics::ApplyDamage(
+						OtherActor,
+						Damage * Magnification,
+						InstigatorController,
+						this,
+						UDamageType::StaticClass()
+					);
+				}
+				// client and ssr
+				else if (!HasAuthority() && InstigatorPawn->IsLocallyControlled() && bUseServerSideRewind) {
+					BlasterOwnerCharacter = BlasterOwnerCharacter == nullptr ? Cast<ABlasterCharacter>(InstigatorPawn) : BlasterOwnerCharacter;
+					BlasterOwnerController = !BlasterOwnerController ? Cast<ABlasterPlayerController>(InstigatorController) : BlasterOwnerController;
+					// since scatter is done locally, hittarget here is simply extended by 1.25 times
+					if (BlasterOwnerCharacter && BlasterOwnerController && BlasterOwnerCharacter->GetLagCompensation()) {
+						BlasterOwnerCharacter->GetLagCompensation()->ServerScoreRequest(
 							OtherActor,
-							Damage,
-							InstigatorController,
-							this,
-							UDamageType::StaticClass()
+							Start,
+							HitTarget,
+							BlasterOwnerController->GetServerTime() - BlasterOwnerController->SingleTripTime, // location on the client is half RRT before based on server time.
+							this
 						);
 					}
 				}
@@ -86,25 +106,13 @@ void AHitScanWeapon::Fire(const FVector& HitTarget)
 	}	// SocketTransform
 }
 
-FVector AHitScanWeapon::TraceEndWithScatter(const FVector& TraceStart, const FVector& HitTarget)
-{
-	FVector ToTargetNormalized = (HitTarget - TraceStart).GetSafeNormal();
-	FVector SphereCenter = TraceStart + ToTargetNormalized * DistanceToSphere;
-	FVector RandVec = UKismetMathLibrary::RandomUnitVector() * FMath::FRandRange(0.0f, SphereRadius);
-	FVector EndLoc = SphereCenter + RandVec;
-	FVector ToEndLoc = EndLoc - TraceStart;
-
-	//DrawDebugSphere(GetWorld(), SphereCenter, SphereRadius, 12, FColor::Red, true);
-	//DrawDebugSphere(GetWorld(), EndLoc, 4.0f, 12, FColor::Orange, true);
-	//DrawDebugLine(GetWorld(), TraceStart, TraceStart + ToEndLoc.GetSafeNormal() * TRACE_LENGTH, FColor::Green, true);
-	return TraceStart + ToEndLoc.GetSafeNormal() * TRACE_LENGTH;
-}
-
 void AHitScanWeapon::WeaponTraceHit(const FVector& TraceStart, const FVector& HitTarget, FHitResult& OutHit)
 {
 	UWorld* World = GetWorld();
 	if (World) {
-		FVector End = bUseScatter ? TraceEndWithScatter(TraceStart, HitTarget) : TraceStart + (HitTarget - TraceStart) * 1.25;
+		//FVector End = bUseScatter ? TraceEndWithScatter(TraceStart, HitTarget) : TraceStart + (HitTarget - TraceStart) * 1.25;
+		// Apply scatter before fire in CombatCOmponent;
+		FVector End = TraceStart + (HitTarget - TraceStart) * 1.25;
 		World->LineTraceSingleByChannel(
 			OutHit,
 			TraceStart,
@@ -114,6 +122,9 @@ void AHitScanWeapon::WeaponTraceHit(const FVector& TraceStart, const FVector& Hi
 		FVector BeamEnd = End;
 		if (OutHit.bBlockingHit) {
 			BeamEnd = OutHit.ImpactPoint;
+		}
+		else {
+			OutHit.ImpactPoint = End;
 		}
 
 		if (BeamParticles) {
@@ -129,5 +140,7 @@ void AHitScanWeapon::WeaponTraceHit(const FVector& TraceStart, const FVector& Hi
 				Beam->SetVectorParameter(FName("Target"), BeamEnd);
 			}
 		}
+
+		//DrawDebugSphere(GetWorld(), BeamEnd, 20, 12, FColor::Red, true);
 	}
 }

@@ -8,7 +8,10 @@
 #include "Blaster/Public/Interfaces/InteractWithCrosshairsInterface.h"
 #include "Components/TimelineComponent.h"
 #include "Blaster/Public/BlasterTypes/CombatState.h"
+#include "Blaster/Public/BlasterTypes/Team.h"
 #include "BlasterCharacter.generated.h"
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLeftGame);
 
 class USpringArmComponent;
 class UCameraComponent;
@@ -21,7 +24,12 @@ class UAnimMontage;
 class ABlasterPlayerController;
 class USoundCue;
 class ABlasterPlayerState;
+class ABlasterGameMode;
 class UBuffComponent;
+class UBoxComponent;
+class ULagCompensationComponent;
+class UNiagaraComponent;
+class UNiagaraSystem;
 
 UCLASS()
 class BLASTER_API ABlasterCharacter : public ACharacter, public IInteractWithCrosshairsInterface
@@ -52,10 +60,13 @@ public:
 
 	void PlayThrowGrenadeMontage();
 
-	void Elim();
+	void PlaySwapWeaponMontage();
+
+	void Elim(bool bPlayerLeftGame);
 	void DropOrDestroyWeapon(AWeapon* Weapon);
+	void SetSpawnPoint();
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastElim();
+	void MulticastElim(bool bPlayerLeftGame);
 
 	UFUNCTION()
 	void ReceiveDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
@@ -69,6 +80,8 @@ public:
 	void SpawnDefaultWeapon();
 
 	virtual void Destroyed() override;
+
+	FOnLeftGame OnLeftGame;
 
 protected:
 	virtual void BeginPlay() override;
@@ -158,7 +171,81 @@ public:
 
 	UFUNCTION()
 	void ThrowGrenade();
+
+	UFUNCTION(Server, Reliable)
+	void ServerLeaveGame();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastGainedTheLead();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastLostTheLead();
+
+	void DropTheFlag();
+
+
+	/** 
+	*	Hit boxes used for server-side rewind
+	*/
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> head;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> pelvis;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> spine_02;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> spine_03;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> upperarm_l;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> upperarm_r;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> lowerarm_l;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> lowerarm_r;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> hand_l;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> hand_r;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> backpack;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> blanket;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> thigh_l;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> thigh_r;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> calf_l;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> calf_r;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> foot_l;
+
+	UPROPERTY(EditAnywhere, Category = "Hit boxes")
+	TObjectPtr<UBoxComponent> foot_r;
+
+	TMap<FName, UBoxComponent*> HitCollisionBoxes;
 private:
+	TObjectPtr<ABlasterGameMode> BlasterGameMode;
+
 	UPROPERTY(VisibleAnywhere, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;
 
@@ -174,14 +261,24 @@ private:
 	UFUNCTION()
 	void OnRep_OverlappingWeapon(AWeapon* LastWeapon);
 
+	/**
+	*	Blaster components
+	*/
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCombatComponent> Combat;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UBuffComponent> Buff;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<ULagCompensationComponent> LagCompensation;
+
 	UFUNCTION(Server, Reliable)
-	void ServerEuipped();
+	void ServerEuip();
+
+	UFUNCTION(Server, Reliable)
+	void ServerSwap();
 
 	float AO_Yaw;
 	float InterpAO_Yaw;
@@ -209,6 +306,9 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Combat")
 	TObjectPtr<UAnimMontage> ThrowGrenadeMontage;
+
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	TObjectPtr<UAnimMontage> SwapWeaponMontage;
 
 	void HideCharacterIfCameraClose();
 	UPROPERTY(EditAnywhere)
@@ -257,6 +357,8 @@ private:
 	float RespawnDelay = 3.0f;
 	void ElimTimerFinished();
 
+	bool bLeftGame = false;
+
 	/** 
 	*	Dissolve Effect
 	*/
@@ -278,11 +380,32 @@ private:
 	TObjectPtr<UMaterialInstanceDynamic> DynamicDissolveMaterialInstance;
 
 	// Material instance set on the Blueprint, used with the dynamic material.
-	UPROPERTY(EditAnywhere, Category = "Elim")
+	UPROPERTY(VisibleAnywhere, Category = "Elim")
 	TObjectPtr<UMaterialInstance> DissolveMaterialInstance;
 
+	/** 
+	*	Team Colors
+	*/
+	UPROPERTY(EditAnywhere, Category = "Team")
+	TObjectPtr<UMaterialInstance> RedDissolveMaterialInstance;
+
+	UPROPERTY(EditAnywhere, Category = "Team")
+	TObjectPtr<UMaterialInstance> RedMaterial;
+
+	UPROPERTY(EditAnywhere, Category = "Team")
+	TObjectPtr<UMaterialInstance> BlueDissolveMaterialInstance;
+
+	UPROPERTY(EditAnywhere, Category = "Team")
+	TObjectPtr<UMaterialInstance> BlueMaterial;
+
+	UPROPERTY(EditAnywhere, Category = "Team")
+	TObjectPtr<UMaterialInstance> OriginalDissolveMaterialInstance;
+
+	UPROPERTY(EditAnywhere, Category = "Team")
+	TObjectPtr<UMaterialInstance> OriginalMaterial;
+
 	/*  
-	* Elim Bot
+	*	Effects
 	*/
 	UPROPERTY(EditAnywhere, Category = "Elim")
 	TObjectPtr<UParticleSystem> ElimBotEffect;
@@ -294,6 +417,12 @@ private:
 	TObjectPtr<USoundCue> ElimBotSound;
 
 	TObjectPtr<ABlasterPlayerState> BlasterPlayerState;
+
+	UPROPERTY(EditAnywhere, Category = "Effects")
+	TObjectPtr<UNiagaraSystem> CrownSystem;
+
+	UPROPERTY(VisibleAnywhere, Category = "Effects")
+	TObjectPtr<UNiagaraComponent> CrownComponent;
 
 	/* 
 	*	Grenade
@@ -329,6 +458,7 @@ public:
 	FORCEINLINE UCombatComponent* GetCombatComponent() const { return Combat; }
 	FORCEINLINE UBuffComponent* GetBuffComponent() const { return Buff; }
 	FORCEINLINE bool IsDisableGameplay() const { return bDisableGameplay; }
+	void SetHoldingTheFlag(bool bHolding);
 
 	// hit reaction
 	//UFUNCTION(NetMulticast, Unreliable)
@@ -338,4 +468,11 @@ public:
 	void ShowSniperScopeWidget(bool bShowScope);
 	FORCEINLINE UAnimMontage* GetReloadMontage() const { return ReloadMontage; }
 	FORCEINLINE UStaticMeshComponent* GetAttachedGrenade() const { return AttachedGrenade; }
+	// cannot inline, because the definition of Combat is used
+	bool IsLocallyReloading() const;
+	bool IsLocallySwapping() const;
+	FORCEINLINE ULagCompensationComponent* GetLagCompensation() const { return LagCompensation; }
+	void SetTeamColor(ETeam ColorToSet);
+	bool IsHoldingTheFlag() const;
+	ETeam GetTeam();
 };

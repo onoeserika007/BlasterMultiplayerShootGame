@@ -14,6 +14,7 @@
 #include "Engine/SkeletalMeshSocket.h"
 #include "Blaster/Public/BlasterTypes/WeaponTypes.h"
 #include "Blaster/Public/BlasterComponents/CombatComponent.h"
+#include "Kismet/KismetMathLibrary.h"
 
 static void PrintTraceStack(int Depth = 5)
 {
@@ -77,12 +78,18 @@ void AWeapon::BeginPlay()
 	//WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	RelativeTransformFromRootToMesh = WeaponMesh->GetRelativeTransform();
 	
-	if (GetLocalRole() == ENetRole::ROLE_Authority || HasAuthority()) {
-		AreaSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-		AreaSphere->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Overlap);
-		AreaSphere->OnComponentBeginOverlap.AddDynamic(this, &ThisClass::OnSphereOverlap);
-		AreaSphere->OnComponentEndOverlap.AddDynamic(this, &ThisClass::OnSphereEndOverlap);
-	}
+	//if (GetLocalRole() == ENetRole::ROLE_Authority || HasAuthority()) {
+	//	AreaSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	//	AreaSphere->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Overlap);
+	//	AreaSphere->OnComponentBeginOverlap.AddDynamic(this, &ThisClass::OnSphereOverlap);
+	//	AreaSphere->OnComponentEndOverlap.AddDynamic(this, &ThisClass::OnSphereEndOverlap);
+	//}
+
+	// Overlaps can happens on client, equiping is still handled by server exclusively.
+	AreaSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	AreaSphere->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Overlap);
+	AreaSphere->OnComponentBeginOverlap.AddDynamic(this, &ThisClass::OnSphereOverlap);
+	AreaSphere->OnComponentEndOverlap.AddDynamic(this, &ThisClass::OnSphereEndOverlap);
 
 }
 
@@ -96,6 +103,9 @@ void AWeapon::ShowPickupWidget(bool bShowWidget)
 void AWeapon::OnWeaponStateSet()
 {
 	switch (WeaponState) {
+	case EWeaponState::EWS_Initial:
+		OnInitial();
+		break;
 	case EWeaponState::EWS_Equipped:
 		OnEquipped();
 		break;
@@ -108,16 +118,20 @@ void AWeapon::OnWeaponStateSet()
 	}
 }
 
+void AWeapon::OnInitial()
+{
+}
+
 void AWeapon::OnEquipped()
 {
 	// at least this can't
 	ShowPickupWidget(false);
-	if (HasAuthority()) {
-		//UE_LOG(LogTemp, Warning, TEXT("Set AreaSphere disable."));
-		AreaSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	}
+	AreaSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
 	WeaponMesh->SetSimulatePhysics(false);
 	WeaponMesh->SetEnableGravity(false);
+	// Component will be detached from parent after SetSimulatePhysics to true, so it's important to attach back to root.
+	WeaponMesh->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 	WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	WeaponMesh->SetRelativeTransform(RelativeTransformFromRootToMesh);
 	if (WeaponType == EWeaponType::EWT_SubmachineGun) {
@@ -129,18 +143,26 @@ void AWeapon::OnEquipped()
 
 	// SetHUD
 	SetHUDWeaponAmmo();
+
+	// bind pingTooHighDelegate
+	BlasterOwnerCharacter = BlasterOwnerCharacter == nullptr ? Cast<ABlasterCharacter>(GetOwner()) : BlasterOwnerCharacter;
+	if (BlasterOwnerCharacter && bUseServerSideRewind) {
+		BlasterOwnerController = !BlasterOwnerController ? Cast<ABlasterPlayerController>(BlasterOwnerCharacter->Controller) : BlasterOwnerController;
+		if (BlasterOwnerController && HasAuthority() && !BlasterOwnerController->HighPingDelegate.IsBound()) {
+			BlasterOwnerController->HighPingDelegate.AddDynamic(this, &ThisClass::OnPingTooHigh);
+		}
+	}
 }
 
 void AWeapon::OnEquippedSecondary()
 {
 	// at least this can't
 	ShowPickupWidget(false);
-	if (HasAuthority()) {
-		//UE_LOG(LogTemp, Warning, TEXT("Set AreaSphere disable."));
-		AreaSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	}
+	AreaSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
 	WeaponMesh->SetSimulatePhysics(false);
 	WeaponMesh->SetEnableGravity(false);
+	WeaponMesh->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 	WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	WeaponMesh->SetRelativeTransform(RelativeTransformFromRootToMesh);
 	if (WeaponType == EWeaponType::EWT_SubmachineGun) {
@@ -158,14 +180,24 @@ void AWeapon::OnEquippedSecondary()
 	else {
 		EnableCustomDepth(false);
 	}
+
+	// unbind pingTooHighDelegate
+	BlasterOwnerCharacter = BlasterOwnerCharacter == nullptr ? Cast<ABlasterCharacter>(GetOwner()) : BlasterOwnerCharacter;
+	if (BlasterOwnerCharacter) {
+		BlasterOwnerController = !BlasterOwnerController ? Cast<ABlasterPlayerController>(BlasterOwnerCharacter->Controller) : BlasterOwnerController;
+		if (BlasterOwnerController && HasAuthority() && BlasterOwnerController->HighPingDelegate.IsBound()) {
+			BlasterOwnerController->HighPingDelegate.RemoveDynamic(this, &ThisClass::OnPingTooHigh);
+		}
+	}
 }
 
 void AWeapon::OnDropped()
 {
-	if (HasAuthority()) {
-		//UE_LOG(LogTemp, Warning, TEXT("Set AreaSphere enabled."));
-		AreaSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	}
+	//if (HasAuthority()) {
+	//	//UE_LOG(LogTemp, Warning, TEXT("Set AreaSphere enabled."));
+	//	
+	//}
+	AreaSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	// once simulate physics is set, WeaponMesh will detach from its parent.
 	WeaponMesh->SetSimulatePhysics(true);
 	WeaponMesh->SetEnableGravity(true);
@@ -176,6 +208,15 @@ void AWeapon::OnDropped()
 	WeaponMesh->SetCustomDepthStencilValue(CUSTOM_DEPTH_BLUE);
 	WeaponMesh->MarkRenderStateDirty();	//This will force a refresh
 	EnableCustomDepth(true);
+
+	// unbind pingTooHighDelegate
+	BlasterOwnerCharacter = BlasterOwnerCharacter == nullptr ? Cast<ABlasterCharacter>(GetOwner()) : BlasterOwnerCharacter;
+	if (BlasterOwnerCharacter) {
+		BlasterOwnerController = !BlasterOwnerController ? Cast<ABlasterPlayerController>(BlasterOwnerCharacter->Controller) : BlasterOwnerController;
+		if (BlasterOwnerController && HasAuthority() && BlasterOwnerController->HighPingDelegate.IsBound()) {
+			BlasterOwnerController->HighPingDelegate.RemoveDynamic(this, &ThisClass::OnPingTooHigh);
+		}
+	}
 }
 
 // called on server and client, and OnRep_WeaponState make sure that the effect is dispatched to client;
@@ -214,6 +255,7 @@ void AWeapon::OnRep_Owner()
 	}
 }
 
+// If our ammo is already at the correct value, this RepNotify isn't going to be called.
 void AWeapon::OnRep_Ammo()
 {
 	BlasterOwnerCharacter = BlasterOwnerCharacter == nullptr ? Cast<ABlasterCharacter>(GetOwner()) : BlasterOwnerCharacter;
@@ -256,12 +298,83 @@ void AWeapon::EnableCustomDepth(bool bEnable)
 
 void AWeapon::SpendRound()
 {
+	//if (HasAuthority()) {
+	//	Ammo = FMath::Clamp(Ammo - 1, 0, MagCapacity);
+	//	SetHUDWeaponAmmo();
+	//}
+	// Testing for client-side predicting ammo
+	Ammo = FMath::Clamp(Ammo - 1, 0, MagCapacity);
+	SetHUDWeaponAmmo();
 	if (HasAuthority()) {
-		Ammo = FMath::Clamp(Ammo - 1, 0, MagCapacity);
-		SetHUDWeaponAmmo();
+		ClientUpdateAmmo(Ammo);
+	}
+	else {
+		// only work on client and local
+		AmmoSequence++;
+		UE_LOG(LogTemp, Warning, TEXT("AmmoSequence++, %d"), AmmoSequence);
 	}
 }
 
+void AWeapon::ClientUpdateAmmo_Implementation(int32 ServerAmmo)
+{
+	if (HasAuthority()) return;
+	Ammo = ServerAmmo;
+	AmmoSequence--;
+	UE_LOG(LogTemp, Warning, TEXT("AmmoSequence--, %d"), AmmoSequence);
+	Ammo -= AmmoSequence;
+	SetHUDWeaponAmmo();
+}
+
+// TODO: Now there is a lag on client to reload shotgun.
+// Try to use client side prediction to figure it out.
+// only on server
+void AWeapon::AddAmmo(int32 amount)
+{
+	Ammo = FMath::Clamp(Ammo + amount, 0, MagCapacity);
+	SetHUDWeaponAmmo();
+	if (HasAuthority()) {
+		ClientAddAmmo(amount);
+	}
+}
+
+void AWeapon::ClientAddAmmo_Implementation(int32 AmmoToAdd)
+{
+	if (HasAuthority()) return;
+	Ammo = FMath::Clamp(Ammo + AmmoToAdd, 0, MagCapacity);
+	BlasterOwnerCharacter = BlasterOwnerCharacter == nullptr ? Cast<ABlasterCharacter>(GetOwner()) : BlasterOwnerCharacter;
+	if (WeaponType == EWeaponType::EWT_Shotgun && BlasterOwnerCharacter && BlasterOwnerCharacter->GetCombatComponent() && IsFull()) {
+		// Handle shotgun fuul
+		BlasterOwnerCharacter->GetCombatComponent()->JumpToShotgunEnd();
+	}
+	SetHUDWeaponAmmo();
+}
+
+FVector AWeapon::TraceEndWithScatter(const FVector& HitTarget)
+{
+	const USkeletalMeshSocket* MuzzleFlashSocket = GetWeaponMesh()->GetSocketByName(FName("MuzzleFlash"));
+	if (!MuzzleFlashSocket) return {};
+	FTransform SocketTransform = MuzzleFlashSocket->GetSocketTransform(GetWeaponMesh());
+	// From muzzle flash socket to hit location from TraceUnderCrosshairs
+	FVector TraceStart = SocketTransform.GetLocation();
+
+	FVector ToTargetNormalized = (HitTarget - TraceStart).GetSafeNormal();
+	FVector SphereCenter = TraceStart + ToTargetNormalized * DistanceToSphere;
+	FVector RandVec = UKismetMathLibrary::RandomUnitVector() * FMath::FRandRange(0.0f, SphereRadius);
+	FVector EndLoc = SphereCenter + RandVec;
+	FVector ToEndLoc = EndLoc - TraceStart;
+
+	//DrawDebugSphere(GetWorld(), SphereCenter, SphereRadius, 12, FColor::Red, true);
+	//DrawDebugSphere(GetWorld(), EndLoc, 4.0f, 12, FColor::Orange, true);
+	//DrawDebugLine(GetWorld(), TraceStart, TraceStart + ToEndLoc.GetSafeNormal() * TRACE_LENGTH, FColor::Green, true);
+	return TraceStart + ToEndLoc.GetSafeNormal() * TRACE_LENGTH;
+}
+
+void AWeapon::OnPingTooHigh(bool bPingTooHigh)
+{
+	bUseServerSideRewind = !bPingTooHigh;
+}
+
+// At least now it's safr to call locally.
 void AWeapon::Fire()
 {
 	// Fire events that will be done on all machines.
@@ -319,18 +432,15 @@ bool AWeapon::IsFull()
 	return Ammo >= MagCapacity;
 }
 
-void AWeapon::AddAmmo(int32 amount)
-{
-	Ammo = FMath::Clamp(Ammo + amount, 0, MagCapacity);
-	SetHUDWeaponAmmo();
-}
-
 void AWeapon::OnSphereOverlap(UPrimitiveComponent* OverlapComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(OtherActor);
 	if (BlasterCharacter) {
 		// PickupWidget->SetVisibility(true); // this is delegated to the character to do
 		UE_LOG(LogTemp, Warning, TEXT("OnSphereOverlap"));
+		// can't bear player's own flag
+		if (WeaponType == EWeaponType::EWT_Flag && BlasterCharacter->GetTeam() == Team && Team != ETeam::ET_NoTeam) return;
+		if (BlasterCharacter->IsHoldingTheFlag()) return;
 		BlasterCharacter->SetOverlappingWeapon(this);
 	}
 }
@@ -341,6 +451,8 @@ void AWeapon::OnSphereEndOverlap(UPrimitiveComponent* OverlapComponent, AActor* 
 	if (BlasterCharacter) {
 		//PickupWidget->SetVisibility(true);
 		UE_LOG(LogTemp, Warning, TEXT("OnSphereEndOverlap"));
+		if (WeaponType == EWeaponType::EWT_Flag && BlasterCharacter->GetTeam() == Team && Team != ETeam::ET_NoTeam) return;
+		if (BlasterCharacter->IsHoldingTheFlag()) return;
 		BlasterCharacter->SetOverlappingWeapon(nullptr);
 	}
 }
@@ -356,6 +468,7 @@ void AWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeP
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AWeapon, WeaponState);
-	DOREPLIFETIME(AWeapon, Ammo);
+	DOREPLIFETIME_CONDITION(AWeapon, bUseServerSideRewind, COND_OwnerOnly);
+	//DOREPLIFETIME(AWeapon, Ammo);
 }
 

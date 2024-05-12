@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Blaster/Public/BlasterTypes/WeaponTypes.h"
+#include "Blaster/Public/BlasterTypes/Team.h"
 #include "Weapon.generated.h"
 
 class USkeletalMeshComponent;
@@ -28,6 +29,15 @@ enum class EWeaponState : uint8 {
 	EWS_MAX UMETA(DisplayName = "DefaultMAX")
 };
 
+UENUM(BlueprintType)
+enum class EFireType : uint8 {
+	EFT_HitScan UMETA(DisplayName = "Hit Scan Weapon"),
+	EFT_Projectile UMETA(DisplayName = "Projectile Weapon"),
+	EFT_Shotgun UMETA(DisplayName = "Shotgun Weapon"),
+
+	EFT_MAX UMETA(DisplayName = "DefaultMAX")
+};
+
 
 
 UCLASS()
@@ -43,9 +53,10 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	virtual void OnWeaponStateSet();
-	void OnEquipped();
-	void OnEquippedSecondary();
-	void OnDropped();
+	virtual void OnInitial();
+	virtual void OnEquipped();
+	virtual void OnEquippedSecondary();
+	virtual void OnDropped(); 
 
 	UFUNCTION()
 	virtual void OnSphereOverlap(
@@ -88,13 +99,17 @@ public:
 	virtual void Fire(const FVector& HitTarget);
 	FORCEINLINE float GetZoomedFOV() const { return ZoomedFOV; }
 	FORCEINLINE float GetZoomInterpSpeed() const { return ZoomInterpSpeed; }
-	void Dropped();
+	virtual void Dropped();
 	bool IsEmpty();
 	bool IsFull();
 	FORCEINLINE EWeaponType GetWeaponType() const { return WeaponType; }
 	FORCEINLINE int32 GetAmmo() const { return Ammo; }
 	FORCEINLINE int32 GetMagCapacity() const { return MagCapacity; }
 	void AddAmmo(int32 amount);
+	FORCEINLINE float GetDamage() const { return Damage; }
+	FORCEINLINE float GetHeadShotMagnification() const { return HeadShotMagnification; }
+	FORCEINLINE UWidgetComponent* GetPickupWidget() const { return PickupWidget; }
+	FORCEINLINE ETeam GetTeam() const { return Team; }
 
 	/**
 	* Textures for the weapon crosshairs
@@ -142,12 +157,46 @@ public:
 
 	bool bDestroyWeapon = false;
 
-private:
-	UPROPERTY(VisibleAnywhere, Category = "Weapon Properties")
-	TObjectPtr<USkeletalMeshComponent> WeaponMesh;
+	UPROPERTY(EditAnywhere)
+	EFireType FireType;
+
+	/*
+	*	Trace End with Scatter
+	*/
+
+	UPROPERTY(EditAnywhere, Category = "Weapon Scatter")
+	float DistanceToSphere = 800.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Weapon Scatter")
+	float SphereRadius = 75.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Weapon Scatter")
+	bool bUseScatter = false;
+
+	FVector TraceEndWithScatter(const FVector& HitTarget);
+
+	UFUNCTION()
+	void OnPingTooHigh(bool bPingTooHigh);
+protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Weapon Properties")
 	TObjectPtr<USphereComponent> AreaSphere;
+
+	UPROPERTY(EditAnywhere)
+	float Damage = 12.0f;
+
+	UPROPERTY(EditAnywhere)
+	float HeadShotMagnification = 2.0f;
+
+	UPROPERTY(EditAnywhere, Replicated)
+	bool bUseServerSideRewind = false;
+	TObjectPtr<ABlasterCharacter> BlasterOwnerCharacter;
+	TObjectPtr<ABlasterPlayerController> BlasterOwnerController;
+	FTransform RelativeTransformFromRootToMesh;
+
+private:
+	UPROPERTY(VisibleAnywhere, Category = "Weapon Properties")
+	TObjectPtr<USkeletalMeshComponent> WeaponMesh;
 
 	UPROPERTY(ReplicatedUsing = OnRep_WeaponState, VisibleAnywhere, Category = "Weapon Properties")
 	EWeaponState WeaponState;
@@ -161,21 +210,32 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
 	TSubclassOf<ACasing> CasingClass;
 
-	FTransform RelativeTransformFromRootToMesh;
-
 	// count of Ammo remaining
-	UPROPERTY(EditAnywhere, ReplicatedUsing = OnRep_Ammo)
+	// UPROPERTY(EditAnywhere, ReplicatedUsing = OnRep_Ammo)
+	UPROPERTY(EditAnywhere)
 	int32 Ammo;
 
 	void SpendRound();
 
+	// Client RPC Runs only on actor's owning client, so the ammo of the weapon for the second client won't be updated.
+	//UFUNCTION(Client, Reliable)
+	UFUNCTION(NetMulticast, Reliable)
+	void ClientUpdateAmmo(int32 ServerAmmo);
+
+	//UFUNCTION(Client, Reliable)
+	UFUNCTION(NetMulticast, Reliable)
+	void ClientAddAmmo(int32 AmmoToAdd);
+
+	// The number of unprocessed server requests for ammo
+	// Increment in SpendRound, decremented in ClientUpdateAmmo
+	int32 AmmoSequence = 0;
+
 	UPROPERTY(EditAnywhere)
 	int32 MagCapacity;
-
-	TObjectPtr<ABlasterCharacter> BlasterOwnerCharacter;
-	TObjectPtr<ABlasterPlayerController> BlasterOwnerController;
 
 	UPROPERTY(EditAnywhere)
 	EWeaponType WeaponType;
 
+	UPROPERTY(EditAnywhere)
+	ETeam Team = ETeam::ET_NoTeam;
 };

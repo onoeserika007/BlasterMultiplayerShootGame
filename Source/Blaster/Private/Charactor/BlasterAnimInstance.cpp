@@ -36,6 +36,7 @@ void UBlasterAnimInstance::NativeUpdateAnimation(float DeltaTime)
 		bIsLocallyControlled = BlasterCharacter->IsLocallyControlled();
 		bRotateRootBone = BlasterCharacter->ShouldRotateRootBone();
 		bElimmed = BlasterCharacter->IsElimmed();
+		bHoldingTheFlag = BlasterCharacter->IsHoldingTheFlag();
 
 		FRotator AimRotation = BlasterCharacter->GetBaseAimRotation();
 		FRotator MovementRotation = UKismetMathLibrary::MakeRotFromX(BlasterCharacter->GetVelocity());
@@ -74,13 +75,54 @@ void UBlasterAnimInstance::NativeUpdateAnimation(float DeltaTime)
 			// muzzle tip dir debug
 			FTransform MuzzleTipTransform = EquippedWeapon->GetWeaponMesh()->GetSocketTransform(FName("MuzzleFlash"), ERelativeTransformSpace::RTS_World);
 			FVector MuzzleX{ FRotationMatrix(MuzzleTipTransform.GetRotation().Rotator()).GetUnitAxis(EAxis::X) };
-			DrawDebugLine(GetWorld(), MuzzleTipTransform.GetLocation(), MuzzleTipTransform.GetLocation() + MuzzleX * 1000.0f, FColor::Red);
-			DrawDebugLine(GetWorld(), MuzzleTipTransform.GetLocation(), BlasterCharacter->GetHitTarget(), FColor::Cyan);
+			//DrawDebugLine(GetWorld(), MuzzleTipTransform.GetLocation(), MuzzleTipTransform.GetLocation() + MuzzleX * 1000.0f, FColor::Red);
+			//DrawDebugLine(GetWorld(), MuzzleTipTransform.GetLocation(), BlasterCharacter->GetHitTarget(), FColor::Cyan);
 		}
 
-		bUseFABRIK = BlasterCharacter->GetCombateState() == ECombatState::ECS_Unoccupied;
+		bUseFABRIK = BlasterCharacter->GetCombateState() == ECombatState::ECS_Unoccupied
+			|| (!BlasterCharacter->IsLocallyReloading() && BlasterCharacter->GetCombateState() == ECombatState::ECS_Reloading)
+			|| (!BlasterCharacter->IsLocallySwapping() && BlasterCharacter->GetCombateState() == ECombatState::ECS_SwappingWeapons);
 		bUseAimOffsets = BlasterCharacter->GetCombateState() == ECombatState::ECS_Unoccupied;
-		bTransformRightHand = (BlasterCharacter->GetCombateState() == ECombatState::ECS_Unoccupied) && !BlasterCharacter->IsDisableGameplay();
+		bTransformRightHand = (
+			BlasterCharacter->GetCombateState() == ECombatState::ECS_Unoccupied 
+			|| (!BlasterCharacter->IsLocallyReloading() && BlasterCharacter->GetCombateState() == ECombatState::ECS_Reloading)
+			|| (!BlasterCharacter->IsLocallySwapping() && BlasterCharacter->GetCombateState() == ECombatState::ECS_SwappingWeapons)
+			) 
+			&& !BlasterCharacter->IsDisableGameplay();
 	}
 
+	/*if (BlasterCharacter && !BlasterCharacter->HasAuthority()) {
+		Debug(DeltaTime);
+	}*/
+}
+
+void UBlasterAnimInstance::Debug(float DeltaTime)
+{
+	AnimInstanceRunningTime += DeltaTime;
+	if (AnimInstanceRunningTime > DebugMessageGap) {
+		AnimInstanceRunningTime = 0.0f;
+		/*----------------Debug Message here----------------*/
+		UE_LOG(LogTemp, Display, TEXT("BlasterAnimInstance - bUseFABRIK: %d"), bUseFABRIK);
+		UE_LOG(LogTemp, Display, TEXT("BlasterAnimInstance - bUseAimOffsets: %d"), bUseAimOffsets);
+		UE_LOG(LogTemp, Display, TEXT("BlasterAnimInstance - bTransformRightHand: %d"), bTransformRightHand);
+		UE_LOG(LogTemp, Display, TEXT("BlasterAnimInstance - BlasterCharacter->IsLocallyReloading(): %d"), BlasterCharacter->IsLocallyReloading());
+		UE_LOG(LogTemp, Display, TEXT("BlasterAnimInstance - BlasterCharacter->IsLocallySwapping(): %d"), BlasterCharacter->IsLocallySwapping());
+		switch (BlasterCharacter->GetCombateState())
+		{
+		case ECombatState::ECS_Unoccupied:
+			UE_LOG(LogTemp, Display, TEXT("BlasterAnimInstance - CombatState: ECS_Unoccupied"));
+			break;
+		case ECombatState::ECS_Reloading:
+			UE_LOG(LogTemp, Display, TEXT("BlasterAnimInstance - CombatState: ECS_Reloading"));
+			break;
+		case ECombatState::ECS_ThrowingGrenade:
+			UE_LOG(LogTemp, Display, TEXT("BlasterAnimInstance - CombatState: ECS_ThrowingGrenade"));
+			break;
+		case ECombatState::ECS_SwappingWeapons:
+			UE_LOG(LogTemp, Display, TEXT("BlasterAnimInstance - CombatState: ECS_SwappingWeapons"));
+			break;
+		default:
+			break;
+		}
+	}
 }

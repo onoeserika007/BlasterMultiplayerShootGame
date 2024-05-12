@@ -14,6 +14,7 @@ namespace MatchState {
 class ABlasterCharacter;
 //class ACharacter;
 class ABlasterPlayerController;
+class ABlasterPlayerState;
 /**
  * 
  */
@@ -27,6 +28,8 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void PlayerElimilated(ABlasterCharacter* ElimmedCharacter, ABlasterPlayerController* VictimController, ABlasterPlayerController* AttackerController);
 	virtual void RequestRespawn(ACharacter* ElimmedCharacter, AController* ElimmedController);
+	void PlayerLeftGame(ABlasterPlayerState* PlayerLeaving);
+	virtual float CalculateDamage(AController* Attacker, AController* Victim, float BaseDamage);
 protected:
 	virtual void BeginPlay() override;
 	virtual void OnMatchStateSet() override;
@@ -40,6 +43,7 @@ public:
 
 	float LevelStartingTime = 0.0f;
 
+	bool bTeamsMatch = false;
 private:
 	float CountdownTime = 0.0f;
 
