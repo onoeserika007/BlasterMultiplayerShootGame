@@ -20,9 +20,9 @@ void ABlasterPlayerState::OnRep_Score()
 	Character = !Character ? Cast<ABlasterCharacter>(GetPawn()) : Character;
 	// maybe the Character here is detroyed but not set to nullptr yet, if we access to it may access a dangling pointer.
 	// now we know here character has an Invalid Label but with a valid address
-	if (Character) {
+	if (IsValid(Character)) {
 		Controller = !Controller ? Cast<ABlasterPlayerController>(Character->GetController()) : Controller;
-		if (Controller) {
+		if (IsValid(Controller)) {
 			Controller->SetHUDScore(GetScore());
 		}
 	}

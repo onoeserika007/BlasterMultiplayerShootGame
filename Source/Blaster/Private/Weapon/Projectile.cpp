@@ -92,15 +92,16 @@ void AProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, U
 {
 	// since the bullet hit and got destoryed to soon, a bullet can't even be replicated to client becofre it was destroyed.
 	// So we use multicast instead of Destroyed broadcast.
-	if (bReplicates && HasAuthority()) {
+	if (HasAuthority()) {
 		MulticastOnDestroyed();
+		bHit = true;
 	}
 	Destroy();
 }
 
 void AProjectile::Destroyed()
 {
-	if (!bReplicates) HandleDestroyed();
+	if (!bHit) HandleDestroyed();
 	Super::Destroyed();
 }
 

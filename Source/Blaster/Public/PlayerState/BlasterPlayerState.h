@@ -44,8 +44,10 @@ private:
 	// Whether with or without UPROPERTY(), the bug still appears.
 	UPROPERTY()
 	TObjectPtr<ABlasterCharacter> Character = nullptr;
+	
 	UPROPERTY()
 	TObjectPtr<ABlasterPlayerController> Controller = nullptr;
+	
 	UPROPERTY(ReplicatedUsing = OnRep_Defeats, Category = PlayerState, BlueprintGetter = GetDefeats)
 	int32 Defeats;
 

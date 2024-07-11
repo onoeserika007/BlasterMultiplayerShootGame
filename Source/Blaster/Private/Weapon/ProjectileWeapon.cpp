@@ -13,7 +13,7 @@ void AProjectileWeapon::Fire(const FVector& HitTarget)
 	const USkeletalMeshSocket* MuzzleFlashSocket = GetWeaponMesh()->GetSocketByName(FName("MuzzleFlash"));
 	UWorld* World = GetWorld();
 
-	if (MuzzleFlashSocket && World && ProjectileClass && ServerSideRewindProjectileClass) {
+	if (MuzzleFlashSocket && World) {
 		FTransform SocketTransform = MuzzleFlashSocket->GetSocketTransform(GetWeaponMesh());
 		// From muzzle flash socket to hit location from TraceUnderCrosshairs
 		FVector ToTarget = HitTarget - SocketTransform.GetLocation();
@@ -27,7 +27,8 @@ void AProjectileWeapon::Fire(const FVector& HitTarget)
 		// bUseServerSideRewind here is something different from "no SSR" in the comment.
 		// just make it aligned with the weapon.
 		// whether and how to apply damage depends on multiple bools.
-		if (bUseServerSideRewind) {
+		
+		if (bUseServerSideRewind && ServerSideRewindProjectileClass && ProjectileClass ) {
 			// server
 			if (InstigatorPawn->HasAuthority()) {
 				// server, host - use replicated projectile - take damage
@@ -80,7 +81,7 @@ void AProjectileWeapon::Fire(const FVector& HitTarget)
 		}
 		// weapon not using SSR - take damage
 		else {
-			if (InstigatorPawn->HasAuthority()) {
+			if (InstigatorPawn->HasAuthority() && ProjectileClass ) {
 				UE_LOG(LogTemp, Display, TEXT("AProjectileWeapon::Fire - NoSSR Auth Firing"));
 				SpawnedProjectile = World->SpawnActor<AProjectile>(ProjectileClass, SocketTransform.GetLocation(), TargetRotation, SpawnParams); // rep true
 				SpawnedProjectile->bUseServerSideRewind = false;

@@ -91,6 +91,8 @@ private:
 
 	//UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UParticleSystemComponent> TracerComponent;
+
+	bool bHit = false;
 public:	
 	/** 
 	*	Used with server-side rewind
